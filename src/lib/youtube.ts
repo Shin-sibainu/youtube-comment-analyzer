@@ -16,6 +16,7 @@ export type Comment = z.infer<typeof commentSchema>;
 export const videoSchema = z.object({
   id: z.string(),
   title: z.string(),
+  description: z.string(),
   channelTitle: z.string(),
   publishedAt: z.date(),
   viewCount: z.number(),
@@ -31,6 +32,12 @@ export interface AnalysisResult {
   topAuthors: { name: string; count: number }[];
   commentTimeline: { date: string; count: number }[];
   averageLikes: number;
+}
+
+export interface Subtitle {
+  text: string;
+  start: number;
+  duration: number;
 }
 
 export class YouTubeService {
@@ -133,6 +140,7 @@ export class YouTubeService {
       return {
         id: video.id,
         title: video.snippet.title,
+        description: video.snippet.description,
         channelTitle: video.snippet.channelTitle,
         publishedAt: new Date(video.snippet.publishedAt),
         viewCount: parseInt(video.statistics.viewCount),
@@ -199,5 +207,71 @@ export class YouTubeService {
       console.error("動画分析エラー:", error);
       throw error;
     }
+  }
+
+  async getCaptions(videoId: string): Promise<Subtitle[]> {
+    try {
+      // 字幕トラックの一覧を取得
+      const captionListResponse = await fetch(
+        `${this.baseUrl}/captions?part=snippet&videoId=${videoId}&key=${this.apiKey}`
+      );
+
+      if (!captionListResponse.ok) {
+        throw new Error(
+          `YouTube API エラー: ${captionListResponse.statusText}`
+        );
+      }
+
+      const captionList = await captionListResponse.json();
+
+      // 日本語字幕を優先、なければ自動生成字幕を使用
+      const caption = captionList.items.find(
+        (item: any) =>
+          item.snippet.language === "ja" || item.snippet.trackKind === "ASR"
+      );
+
+      if (!caption) {
+        throw new Error("字幕が見つかりませんでした");
+      }
+
+      // 字幕データを取得
+      const captionResponse = await fetch(
+        `${this.baseUrl}/captions/${caption.id}?key=${this.apiKey}`
+      );
+
+      if (!captionResponse.ok) {
+        throw new Error(`YouTube API エラー: ${captionResponse.statusText}`);
+      }
+
+      const captionData = await captionResponse.json();
+      return this.parseCaptionData(captionData);
+    } catch (error) {
+      console.error("字幕取得エラー:", error);
+      throw error;
+    }
+  }
+
+  private parseCaptionData(captionData: any): Subtitle[] {
+    // WebVTT形式の字幕をパース
+    const lines = captionData.split("\n");
+    const subtitles: Subtitle[] = [];
+    let currentSubtitle: Partial<Subtitle> = {};
+
+    for (const line of lines) {
+      if (line.includes("-->")) {
+        const [start, end] = line.split("-->").map((timeStr) => {
+          const [h, m, s] = timeStr.trim().split(":").map(Number);
+          return h * 3600 + m * 60 + s;
+        });
+        currentSubtitle.start = start;
+        currentSubtitle.duration = end - start;
+      } else if (line.trim() && !line.startsWith("WEBVTT")) {
+        currentSubtitle.text = line.trim();
+        subtitles.push(currentSubtitle as Subtitle);
+        currentSubtitle = {};
+      }
+    }
+
+    return subtitles;
   }
 }

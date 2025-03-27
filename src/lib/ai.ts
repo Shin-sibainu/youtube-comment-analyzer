@@ -57,6 +57,14 @@ export interface BatchAnalysisResult {
   };
 }
 
+export interface VideoSummaryResult {
+  title: string;
+  description: string;
+  keyPoints: string[];
+  topics: string[];
+  summary: string;
+}
+
 export class AIAnalyzer {
   private static async analyzeBatch(
     comments: Comment[]
@@ -279,6 +287,92 @@ ${comments.map((c) => `- ${c.textDisplay}`).join("\n")}
           },
         },
       };
+    }
+  }
+
+  static async summarizeVideo(
+    title: string,
+    description: string,
+    subtitles: { text: string }[]
+  ): Promise<VideoSummaryResult> {
+    const prompt = `あなたはYouTube動画の内容を要約する専門家です。以下の情報から動画の内容を分析し、要約してください。
+
+タイトル：${title}
+説明文：${description}
+字幕：
+${subtitles.map((s) => s.text).join("\n")}
+
+以下のJSON形式で出力してください：
+
+{
+  "title": "動画のタイトル",
+  "description": "動画の説明（1-2文）",
+  "keyPoints": [
+    "重要なポイント1",
+    "重要なポイント2",
+    "重要なポイント3"
+  ],
+  "topics": [
+    "トピック1",
+    "トピック2",
+    "トピック3"
+  ],
+  "summary": "動画の要約（3-5文）"
+}
+
+注意：
+- すべての出力は日本語で行ってください
+- 重要なポイントは箇条書きで3-5個抽出してください
+- トピックは3個まで抽出してください
+- 要約は簡潔かつ分かりやすく記述してください`;
+
+    try {
+      const message = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 4096,
+        temperature: 0.0,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const content = message.content.find(
+        (c) => "text" in c && typeof c.text === "string"
+      );
+      if (!content || !("text" in content)) {
+        throw new Error("AI応答が空でした");
+      }
+
+      try {
+        const text = content.text.trim();
+        if (!text.startsWith("{") || !text.endsWith("}")) {
+          throw new Error("不完全なJSONレスポンス");
+        }
+        const result = JSON.parse(text) as VideoSummaryResult;
+
+        if (!result.title || !result.description || !result.summary) {
+          throw new Error("必須フィールドが欠落しています");
+        }
+
+        return result;
+      } catch (error) {
+        console.error("JSON解析エラー:", content.text);
+        return {
+          title: title,
+          description: "要約の生成に失敗しました",
+          keyPoints: ["要約エラー"],
+          topics: ["エラー"],
+          summary:
+            "動画の要約に失敗しました。しばらく時間をおいて再度お試しください。",
+        };
+      }
+    } catch (error) {
+      console.error("Error in video summarization:", error);
+      throw new Error(
+        `動画要約エラー: ${
+          error instanceof Error
+            ? error.message
+            : "予期せぬエラーが発生しました"
+        }`
+      );
     }
   }
 }

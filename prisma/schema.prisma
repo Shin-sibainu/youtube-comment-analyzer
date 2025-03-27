@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  imageUrl      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  projects      Project[]
+  subscriptions Subscription[]
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  videoUrl    String
+  videoId     String    // YouTubeの動画ID
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  comments    Comment[]
+  analyses    Analysis[]
+
+  @@index([userId])
+  @@index([videoId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  authorName String  // コメント投稿者名
+  authorId  String   // YouTubeのコメント投稿者ID
+  likeCount Int      @default(0)
+  replyCount Int     @default(0)
+  publishedAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([authorId])
+}
+
+model Analysis {
+  id          String   @id @default(cuid())
+  sentiment   Float?   // -1.0 から 1.0 の範囲
+  keywords    String   // JSONとして保存する文字列配列
+  summary     String?  // 分析結果の要約
+  isQuestion  Boolean  @default(false) // 質問コメントかどうか
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id])
+  stripeCustomerId     String   @unique
+  stripePriceId        String
+  stripeSubscriptionId String   @unique
+  status               String   // active, canceled, past_due
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId])
+}

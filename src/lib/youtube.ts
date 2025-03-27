@@ -121,7 +121,14 @@ export class YouTubeService {
       }
 
       const data = await response.json();
+      if (!data.items || data.items.length === 0) {
+        throw new Error("動画が見つかりませんでした");
+      }
+
       const video = data.items[0];
+      if (!video.snippet || !video.statistics) {
+        throw new Error("動画情報が不完全です");
+      }
 
       return {
         id: video.id,

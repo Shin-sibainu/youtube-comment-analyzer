@@ -4,6 +4,7 @@ import { YouTubeService } from "@/lib/youtube";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { AIAnalyzer } from "@/lib/ai";
 
 const urlSchema = z.object({
   url: z.string().url("有効なURLを入力してください"),
@@ -25,52 +26,80 @@ function extractVideoId(url: string): string | null {
 }
 
 export async function analyzeVideo(url: string) {
-  "use server";
-
   const { userId } = await auth();
   if (!userId) {
     throw new Error("認証が必要です");
   }
 
-  const result = urlSchema.safeParse({ url });
-  if (!result.success) {
-    throw new Error(result.error.errors[0].message);
-  }
-
   try {
-    const videoId = extractVideoId(result.data.url);
-    if (!videoId) {
-      throw new Error("有効なYouTube URLを入力してください");
+    // URLのバリデーション
+    const result = urlSchema.safeParse({ url });
+    if (!result.success) {
+      throw new Error("有効なURLを入力してください");
     }
 
-    const service = new YouTubeService(process.env.YOUTUBE_API_KEY!);
-    const data = await service.analyzeVideo(videoId);
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      throw new Error("有効なYouTube URLではありません");
+    }
 
-    // ダッシュボードの再検証
+    const youtubeService = new YouTubeService(process.env.YOUTUBE_API_KEY!);
+    const { video, comments, analysis } = await youtubeService.analyzeVideo(
+      videoId
+    );
+
+    let aiAnalysis;
+    try {
+      // AI分析を実行
+      aiAnalysis = await AIAnalyzer.analyzeComments(comments);
+    } catch (error) {
+      console.error("AI分析エラー:", error);
+      aiAnalysis = {
+        batchAnalysis: {
+          overallSentiment: {
+            distribution: {
+              positive: 0,
+              neutral: 100,
+              negative: 0,
+            },
+          },
+          topTopics: ["分析エラー"],
+          summary: "AI分析中にエラーが発生しました",
+        },
+      };
+    }
+
+    // ダッシュボードを再検証
     revalidatePath("/dashboard");
 
     return {
-      analysis: {
-        totalComments: data.analysis.totalComments,
-        uniqueUsers: data.analysis.uniqueAuthors,
-        avgResponseTime: "計算中...", // TODO: 実際の計算を実装
-        sentimentScore: 0, // TODO: 感情分析を実装
+      video: {
+        id: video.id,
+        title: video.title,
+        channelTitle: video.channelTitle,
+        publishedAt: video.publishedAt.toISOString(),
+        viewCount: video.viewCount,
+        likeCount: video.likeCount,
+        commentCount: video.commentCount,
       },
-      comments: data.comments.map((comment) => ({
+      comments: comments.map((comment) => ({
         id: comment.id,
-        content: comment.textDisplay,
-        authorName: comment.authorDisplayName,
-        authorProfileUrl: comment.authorProfileImageUrl || "",
+        authorDisplayName: comment.authorDisplayName,
+        authorProfileImageUrl: comment.authorProfileImageUrl,
+        textDisplay: comment.textDisplay,
         likeCount: comment.likeCount,
-        replyCount: comment.replyCount,
         publishedAt: comment.publishedAt.toISOString(),
-        isReply: false, // TODO: 実際の返信情報を追加
+        updatedAt: comment.updatedAt.toISOString(),
+        replyCount: comment.replyCount,
       })),
+      analysis: {
+        commentTimeline: analysis.commentTimeline,
+        topAuthors: analysis.topAuthors,
+      },
+      aiAnalysis,
     };
   } catch (error) {
-    console.error("Error analyzing video:", error);
-    throw error instanceof Error
-      ? error
-      : new Error("分析中にエラーが発生しました");
+    console.error("動画分析中にエラーが発生しました:", error);
+    throw error;
   }
 }

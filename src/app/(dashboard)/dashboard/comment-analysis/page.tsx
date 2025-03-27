@@ -8,36 +8,41 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AnalyzeForm } from "@/components/youtube/analyze-form";
-import { CommentList } from "@/components/youtube/comments/comment-list";
 import { analyzeVideo } from "../actions";
 import { useState } from "react";
+import { type BatchAnalysisResult } from "@/lib/ai";
 
 interface AnalysisResult {
-  analysis: {
-    totalComments: number;
-    uniqueUsers: number;
-    avgResponseTime: string;
-    sentimentScore: number;
+  video: {
+    id: string;
+    title: string;
+    channelTitle: string;
+    publishedAt: string;
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
   };
   comments: {
     id: string;
-    content: string;
-    authorName: string;
-    authorProfileUrl: string;
+    authorDisplayName: string;
+    authorProfileImageUrl?: string;
+    textDisplay: string;
     likeCount: number;
-    replyCount: number;
     publishedAt: string;
-    isReply: boolean;
+    updatedAt: string;
+    replyCount: number;
   }[];
+  analysis: {
+    commentTimeline: Array<{ date: string; count: number }>;
+    topAuthors: Array<{ name: string; count: number }>;
+  };
+  aiAnalysis: {
+    batchAnalysis: BatchAnalysisResult;
+  };
 }
 
 export default function CommentAnalysisPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
-
-  const handleAnalyze = async (url: string) => {
-    const data = await analyzeVideo(url);
-    setResult(data);
-  };
 
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">
@@ -54,7 +59,7 @@ export default function CommentAnalysisPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <AnalyzeForm onAnalyze={handleAnalyze} />
+            <AnalyzeForm onAnalyze={analyzeVideo} />
           </CardContent>
         </Card>
 
@@ -72,32 +77,32 @@ export default function CommentAnalysisPage() {
                   <div>
                     <div className="text-sm font-medium">総コメント数</div>
                     <div className="text-2xl font-bold">
-                      {result.analysis.totalComments}
+                      {result.video.commentCount.toLocaleString()}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm font-medium">ユニークユーザー</div>
                     <div className="text-2xl font-bold">
-                      {result.analysis.uniqueUsers}
+                      {result.analysis.topAuthors.length.toLocaleString()}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm font-medium">平均返信時間</div>
+                    <div className="text-sm font-medium">再生回数</div>
                     <div className="text-2xl font-bold">
-                      {result.analysis.avgResponseTime}
+                      {result.video.viewCount.toLocaleString()}
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm font-medium">感情スコア</div>
+                    <div className="text-sm font-medium">高評価数</div>
                     <div className="text-2xl font-bold">
-                      {result.analysis.sentimentScore}
+                      {result.video.likeCount.toLocaleString()}
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <CommentList comments={result.comments} />
+            {/* コメントリストは自動的に表示されます */}
           </>
         )}
       </div>

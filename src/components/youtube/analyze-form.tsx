@@ -17,6 +17,15 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ThumbsUp, Clock, MessageCircle } from "lucide-react";
 
 interface AnalyzeFormProps {
   onAnalyze: (url: string) => Promise<AnalysisResult>;
@@ -162,46 +171,95 @@ export function AnalyzeForm({ onAnalyze }: AnalyzeFormProps) {
             <CardHeader>
               <CardTitle>コメント一覧</CardTitle>
               <CardDescription>
-                最新のコメントから表示しています
+                {result.comments.length}件のコメントを表示しています
               </CardDescription>
+              <div className="flex items-center gap-4 mt-4">
+                <Select
+                  defaultValue="newest"
+                  onValueChange={(value) => {
+                    const sortedComments = [...result.comments].sort((a, b) => {
+                      switch (value) {
+                        case "likes":
+                          return b.likeCount - a.likeCount;
+                        case "newest":
+                          return (
+                            new Date(b.publishedAt).getTime() -
+                            new Date(a.publishedAt).getTime()
+                          );
+                        case "replies":
+                          return b.replyCount - a.replyCount;
+                        default:
+                          return 0;
+                      }
+                    });
+                    setResult({ ...result, comments: sortedComments });
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="並び替え" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="likes">
+                      <div className="flex items-center gap-2">
+                        <ThumbsUp className="h-4 w-4" />
+                        <span>いいね順</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="newest">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        <span>新着順</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="replies">
+                      <div className="flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4" />
+                        <span>返信数順</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {result.comments.map((comment) => (
-                  <div key={comment.id} className="space-y-2">
-                    <div className="flex items-start gap-2">
-                      {comment.authorProfileImageUrl && (
-                        <img
-                          src={comment.authorProfileImageUrl}
-                          alt={comment.authorDisplayName}
-                          className="w-8 h-8 rounded-full"
-                        />
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium">
-                            {comment.authorDisplayName}
+              <ScrollArea className="h-[600px]">
+                <div className="space-y-4">
+                  {result.comments.map((comment) => (
+                    <div key={comment.id} className="space-y-2">
+                      <div className="flex items-start gap-2">
+                        {comment.authorProfileImageUrl && (
+                          <img
+                            src={comment.authorProfileImageUrl}
+                            alt={comment.authorDisplayName}
+                            className="w-8 h-8 rounded-full"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">
+                              {comment.authorDisplayName}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {new Date(comment.publishedAt).toLocaleDateString(
+                                "ja-JP"
+                              )}
+                            </div>
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            {new Date(comment.publishedAt).toLocaleDateString(
-                              "ja-JP"
+                          <div className="mt-1 whitespace-pre-wrap">
+                            {comment.textDisplay}
+                          </div>
+                          <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
+                            <div>👍 {comment.likeCount}</div>
+                            {comment.replyCount > 0 && (
+                              <div>💬 {comment.replyCount}</div>
                             )}
                           </div>
                         </div>
-                        <div className="mt-1 whitespace-pre-wrap">
-                          {comment.textDisplay}
-                        </div>
-                        <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-                          <div>👍 {comment.likeCount}</div>
-                          {comment.replyCount > 0 && (
-                            <div>💬 {comment.replyCount}</div>
-                          )}
-                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </ScrollArea>
             </CardContent>
           </Card>
         </div>

@@ -65,6 +65,15 @@ export interface VideoSummaryResult {
   summary: string;
 }
 
+export interface VideoSuggestion {
+  title: string;
+  description: string;
+  estimatedViews: string;
+  targetAudience: string;
+  keywords: string[];
+  confidence: number;
+}
+
 export class AIAnalyzer {
   private static async analyzeBatch(
     comments: Comment[]
@@ -171,13 +180,12 @@ ${comments.map((c) => `- ${c.textDisplay}`).join("\n")}
         throw new Error("AI応答が空でした");
       }
 
-      let result;
       try {
         const text = content.text.trim();
         if (!text.startsWith("{") || !text.endsWith("}")) {
           throw new Error("不完全なJSONレスポンス");
         }
-        result = JSON.parse(text) as BatchAnalysisResult;
+        const result = JSON.parse(text) as BatchAnalysisResult;
 
         if (
           !result.overallSentiment?.distribution ||
@@ -186,7 +194,9 @@ ${comments.map((c) => `- ${c.textDisplay}`).join("\n")}
         ) {
           throw new Error("必須フィールドが欠落しています");
         }
-      } catch (parseError) {
+
+        return result;
+      } catch (err) {
         console.error("JSON解析エラー:", content.text);
         return {
           overallSentiment: {
@@ -210,15 +220,11 @@ ${comments.map((c) => `- ${c.textDisplay}`).join("\n")}
           },
         };
       }
-
-      return result;
-    } catch (error) {
-      console.error("Error in AI analysis:", error);
+    } catch (err) {
+      console.error("Error in AI analysis:", err);
       throw new Error(
         `AI分析エラー: ${
-          error instanceof Error
-            ? error.message
-            : "予期せぬエラーが発生しました"
+          err instanceof Error ? err.message : "予期せぬエラーが発生しました"
         }`
       );
     }
@@ -261,8 +267,8 @@ ${comments.map((c) => `- ${c.textDisplay}`).join("\n")}
       return {
         batchAnalysis,
       };
-    } catch (error) {
-      console.error("コメント分析エラー:", error);
+    } catch (err) {
+      console.error("コメント分析エラー:", err);
       // エラー時のフォールバック値を返す
       return {
         batchAnalysis: {
@@ -373,6 +379,76 @@ ${subtitles.map((s) => s.text).join("\n")}
             : "予期せぬエラーが発生しました"
         }`
       );
+    }
+  }
+
+  static async generateVideoSuggestions(
+    comments: Comment[],
+    analysis: BatchAnalysisResult
+  ): Promise<VideoSuggestion[]> {
+    const prompt = `あなたはYouTubeのトレンド分析と動画提案の専門家です。以下のコメントとその分析結果から、次に制作すべき動画のアイデアを3つ提案してください。
+
+コメント一覧：
+${comments.map((c) => `- ${c.textDisplay}`).join("\n")}
+
+分析結果：
+${JSON.stringify(analysis, null, 2)}
+
+以下のJSON形式で出力してください：
+
+[
+  {
+    "title": "提案する動画のタイトル",
+    "description": "動画の説明（1-2文）",
+    "estimatedViews": "予想再生回数（例：「10万回以上」）",
+    "targetAudience": "ターゲット層（例：「20代男性プログラマー」）",
+    "keywords": ["キーワード1", "キーワード2", "キーワード3"],
+    "confidence": 信頼度（0.0-1.0の数値）
+  }
+]
+
+注意：
+- 提案は3つまでにしてください
+- タイトルは魅力的でクリック率が高そうなものにしてください
+- 説明は簡潔かつ具体的にしてください
+- キーワードは3-5個程度にしてください
+- 信頼度は0.0から1.0の間の数値で、予測の確実性を表してください
+- すべての出力は日本語で行ってください`;
+
+    try {
+      const message = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 4096,
+        temperature: 0.7,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const content = message.content.find(
+        (c) => "text" in c && typeof c.text === "string"
+      );
+      if (!content || !("text" in content)) {
+        throw new Error("AI応答が空でした");
+      }
+
+      try {
+        const text = content.text.trim();
+        if (!text.startsWith("[") || !text.endsWith("]")) {
+          throw new Error("不完全なJSONレスポンス");
+        }
+        const suggestions = JSON.parse(text) as VideoSuggestion[];
+
+        if (!Array.isArray(suggestions) || suggestions.length === 0) {
+          throw new Error("提案が生成されませんでした");
+        }
+
+        return suggestions;
+      } catch (err) {
+        console.error("JSON解析エラー:", content.text);
+        return [];
+      }
+    } catch (err) {
+      console.error("Error in generating video suggestions:", err);
+      return [];
     }
   }
 }

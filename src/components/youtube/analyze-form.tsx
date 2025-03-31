@@ -10,6 +10,8 @@ import { AIAnalysis } from "./analytics/ai-analysis";
 import { TimelineChart } from "./analytics/timeline-chart";
 import { TopAuthorsChart } from "./analytics/top-authors-chart";
 import { type BatchAnalysisResult } from "@/lib/ai";
+import { type VideoSuggestion } from "@/lib/ai";
+import { useAuth, SignInButton } from "@clerk/nextjs";
 import {
   Card,
   CardHeader,
@@ -29,6 +31,7 @@ import { ThumbsUp, Clock, MessageCircle } from "lucide-react";
 
 interface AnalyzeFormProps {
   onAnalyze: (url: string) => Promise<AnalysisResult>;
+  onResult?: (result: AnalysisResult | null) => void;
 }
 
 interface AnalysisResult {
@@ -57,16 +60,28 @@ interface AnalysisResult {
   };
   aiAnalysis: {
     batchAnalysis: BatchAnalysisResult;
+    nextVideoSuggestions: VideoSuggestion[];
   };
 }
 
-export function AnalyzeForm({ onAnalyze }: AnalyzeFormProps) {
+export function AnalyzeForm({ onAnalyze, onResult }: AnalyzeFormProps) {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const { isSignedIn } = useAuth();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!isSignedIn) {
+      toast({
+        title: "認証が必要です",
+        description: "分析を開始するにはログインしてください",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const formData = new FormData(event.currentTarget);
@@ -81,12 +96,15 @@ export function AnalyzeForm({ onAnalyze }: AnalyzeFormProps) {
       }
       const result = await onAnalyze(url);
       setResult(result);
+      onResult?.(result);
       toast({
         title: "分析完了",
         description: "動画の分析が完了しました",
       });
     } catch (error) {
       console.error(error);
+      setResult(null);
+      onResult?.(null);
       toast({
         title: "エラー",
         description: "分析中にエラーが発生しました",
@@ -109,24 +127,38 @@ export function AnalyzeForm({ onAnalyze }: AnalyzeFormProps) {
           required
         />
       </div>
-      <Button
-        type="submit"
-        disabled={isLoading}
-        className={cn(
-          "w-full bg-[#FF0000]/80 hover:bg-[#FF0000] text-white",
-          "transition-colors duration-200",
-          "disabled:bg-[#FF0000]/50"
-        )}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            分析中...
-          </>
-        ) : (
-          "分析開始"
-        )}
-      </Button>
+      {isSignedIn ? (
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className={cn(
+            "w-full bg-[#FF0000]/80 hover:bg-[#FF0000] text-white",
+            "transition-colors duration-200",
+            "disabled:bg-[#FF0000]/50"
+          )}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              分析中...
+            </>
+          ) : (
+            "分析開始"
+          )}
+        </Button>
+      ) : (
+        <SignInButton mode="modal">
+          <Button
+            type="button"
+            className={cn(
+              "w-full bg-[#FF0000]/80 hover:bg-[#FF0000] text-white",
+              "transition-colors duration-200"
+            )}
+          >
+            ログインして分析を開始
+          </Button>
+        </SignInButton>
+      )}
 
       {result && (
         <div className="space-y-8">

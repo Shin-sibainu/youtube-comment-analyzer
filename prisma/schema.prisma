@@ -18,10 +18,12 @@ model User {
   email         String         @unique
   name          String?
   imageUrl      String?
+  credits       Int           @default(5)  // 初期クレジット5付与
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   projects      Project[]
   subscriptions Subscription[]
+  creditHistory CreditHistory[]
 }
 
 model Project {
@@ -36,6 +38,7 @@ model Project {
   user        User      @relation(fields: [userId], references: [id])
   comments    Comment[]
   analyses    Analysis[]
+  creditHistory CreditHistory[] // クレジット消費履歴への関連付け
 
   @@index([userId])
   @@index([videoId])
@@ -86,4 +89,19 @@ model Subscription {
   updatedAt            DateTime @updatedAt
 
   @@index([userId])
+}
+
+model CreditHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  amount      Int      // 変動量（消費:-1, 付与:+N）
+  type        String   // "INITIAL", "CONSUME", "PURCHASE", "SUBSCRIPTION_BONUS" など
+  description String   // "動画分析の利用", "初期クレジット付与" など
+  projectId   String?  // 動画分析で使用した場合のプロジェクトID
+  project     Project? @relation(fields: [projectId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
 }
